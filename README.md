@@ -24,7 +24,7 @@ brew install tmux sesh fzf zoxide
 ## Install
 
 ```bash
-git clone https://github.com/<you>/claude-tmux ~/Developer/tools/claude-tmux
+git clone https://github.com/tilthouse/claude-tmux ~/Developer/tools/claude-tmux
 ~/Developer/tools/claude-tmux/install.sh
 ```
 

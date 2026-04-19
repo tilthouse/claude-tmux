@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # claude-tmux — launch or attach a per-project Claude Code tmux session.
-# Invocation name (cct, claude-tmux, or other symlink) is detected at runtime
+# Invocation name (cct, claude-tmux, or any symlink) is detected at runtime
 # and used throughout the help text so examples match however you call it.
 set -eo pipefail
 
@@ -11,45 +11,64 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
 $prog — launch or attach a per-project Claude Code tmux session.
 
 USAGE
-  $prog [-n name] [rc] [preset] [-- claude args...]
+  $prog [presets...] [options] [-- claude args...]
 
-FLAGS
-  -n <name>    Override the session basename for this invocation.
-               Takes precedence over .cct-name at the git root.
-  -h, --help   Show this help and exit.
+PRESETS  (positional, any order, mutually exclusive within a category)
+  Permission mode:  plan | accept | auto | yolo
+  Model:            opus | sonnet
 
-MODIFIERS
-  rc           Enable Remote Control (--remote-control). The session name
-               gets a timestamp suffix so repeated invocations don't
-               collide: cc-<name>-YYYYMMDD-HHMMSS.
+  Presets from different categories compose:
+    $prog plan sonnet   →  --permission-mode plan  +  --model sonnet
 
-PRESETS
-  plan         --permission-mode plan
-  accept       --permission-mode acceptEdits
-  auto         --permission-mode auto
-  yolo         --dangerously-skip-permissions
-  opus         --model opus
-  sonnet       --model sonnet
+OPTIONS
+  --rc                 Enable Remote Control. Also passes the tmux session
+                       name to claude as the RC session prefix, so the
+                       mobile app picker shows a human-readable name.
+  -r, --resume [id]    Resume a Claude conversation. With an id: resumes
+                       that specific session. Without: opens Claude's
+                       interactive picker.
+  -c, --continue       Continue the most recent conversation in this project
+                       (equivalent to \`claude --continue\`).
+  -n, --name <name>    Override the session basename for this invocation.
+                       Takes precedence over .cct-name at the git root.
+  -h, --help           Show this help and exit.
 
-SESSION NAMING  (precedence, highest to lowest)
+  -r and -c are mutually exclusive.
+
+SESSION NAMING  (basename precedence, highest → lowest)
   1. -n <name>                                  →  cc-<name>
-  2. .cct-name file at the git root (one line)  →  cc-<file contents>
+  2. .cct-name file at git root (one line)      →  cc-<file contents>
   3. git rev-parse --show-toplevel basename     →  cc-<basename>
   4. Current directory basename (no git repo)   →  cc-<basename>
-  With \`rc\`, a -YYYYMMDD-HHMMSS suffix is appended in all cases.
+
+  Session identity is the basename above. Modifiers (--rc, -c, -r) do
+  not appear in the name. A YY-MM-DD-HHMM timestamp is appended only
+  when a modifier implies a new, distinct session, so repeated
+  invocations don't collide.
+
+    cct               →  cc-<basename>
+    cct --rc          →  cc-<basename>-26-04-19-1617
+    cct -c            →  cc-<basename>-26-04-19-1617
+    cct -r [id]       →  cc-<basename>-26-04-19-1617
+    cct plan sonnet   →  cc-<basename>             (presets affect claude
+                                                    flags only, not name)
 
 EXAMPLES
-  $prog                         # Default: cc-<project>, no flags
-  $prog plan                    # Plan-mode session for this project
-  $prog yolo                    # Skip all permission prompts
-  $prog sonnet                  # Force Sonnet model
-  $prog rc                      # Remote Control, no preset
-  $prog rc plan                 # Remote Control + plan preset
-  $prog -n experiment           # One-off session: cc-experiment
-  $prog -n scratch plan         # cc-scratch in plan mode
-  $prog rc -n live-demo         # cc-live-demo-YYYYMMDD-HHMMSS, RC on
-  $prog -n scratch rc yolo      # Any flag/modifier order works
-  $prog -- --add-dir ../brand   # Plain session; pass flags through to claude
+  $prog                           Default: cc-<project>, no flags
+  $prog plan                      Plan mode
+  $prog yolo                      Skip all permission prompts
+  $prog sonnet                    Force Sonnet model
+  $prog plan sonnet               Plan mode + Sonnet
+  $prog yolo opus                 Skip permissions + Opus
+  $prog --rc                      Remote Control, no preset
+  $prog plan --rc                 Plan mode with Remote Control
+  $prog -c                        Continue most recent conversation
+  $prog -r                        Resume — open Claude's picker
+  $prog -r 7f3a-...               Resume a specific session by id
+  $prog --rc -r 7f3a-...          Resume with Remote Control enabled
+  $prog -n scratch                One-off session: cc-scratch
+  $prog -n scratch plan sonnet    cc-scratch, plan + sonnet
+  $prog -- --add-dir ../brand     Pass extra flags through to claude
 
 FILES
   <git-root>/.cct-name   Persistent per-repo session-name override.
@@ -57,11 +76,13 @@ FILES
                          it to keep local.
 
 BEHAVIOR
-  - If the session already exists, $prog attaches to it. Presets only
-    apply when creating a new session; attach preserves whatever claude
-    was started with.
-  - Inside tmux: creates a detached session and switch-clients into it.
+  - If a session with the computed name already exists, $prog attaches
+    to it. Flags and presets only take effect when creating a new session;
+    attach preserves whatever claude was started with originally.
+  - Inside tmux: creates the session detached and switch-clients into it.
     Outside tmux: plain attach-or-new.
+  - With --rc, --remote-control-session-name-prefix=<session-name> is
+    passed to claude so the mobile RC picker shows matching names.
 EOF
   exit 0
 fi
@@ -83,61 +104,138 @@ project_name() {
   echo "cc-$(basename "$root")"
 }
 
-# Pre-preset modifiers: `-n <name>` and `rc` in any order before the preset.
+# ---- argument parsing ----
+# All options are flags (--rc, -r, -c, -n). Presets are positional; any number
+# may appear in any order, with mutual exclusion enforced within each category.
+# `--` ends parsing and passes the remainder through to claude verbatim.
+
 name_override=""
 rc_mode=0
-while :; do
-  case "${1:-}" in
-    -n)
+resume_mode=0
+resume_id=""
+continue_mode=0
+perm_preset=""
+model_preset=""
+preset_flags=()
+extra_args=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n|--name)
       shift
       if [ -z "${1:-}" ]; then
-        echo "$prog: -n requires a session basename" >&2
+        echo "$prog: -n/--name requires a session basename" >&2
         exit 2
       fi
       name_override="$1"
       shift
       ;;
-    rc)
+    --rc)
       rc_mode=1
       shift
       ;;
-    *)
+    -r|--resume)
+      resume_mode=1
+      shift
+      # Optional id: consume the next arg only if it isn't another known
+      # flag, preset, or the -- separator.
+      case "${1:-}" in
+        ""|-*|--|plan|accept|auto|yolo|opus|sonnet)
+          ;;
+        *)
+          resume_id="$1"
+          shift
+          ;;
+      esac
+      ;;
+    -c|--continue)
+      continue_mode=1
+      shift
+      ;;
+    --)
+      shift
+      extra_args=("$@")
       break
+      ;;
+    plan|accept|auto|yolo)
+      if [ -n "$perm_preset" ]; then
+        echo "$prog: conflicting permission presets: $perm_preset and $1" >&2
+        exit 2
+      fi
+      perm_preset="$1"
+      case "$1" in
+        plan|auto) preset_flags+=(--permission-mode "$1") ;;
+        accept)    preset_flags+=(--permission-mode acceptEdits) ;;
+        yolo)      preset_flags+=(--dangerously-skip-permissions) ;;
+      esac
+      shift
+      ;;
+    opus|sonnet)
+      if [ -n "$model_preset" ]; then
+        echo "$prog: conflicting model presets: $model_preset and $1" >&2
+        exit 2
+      fi
+      model_preset="$1"
+      preset_flags+=(--model "$1")
+      shift
+      ;;
+    -*)
+      echo "$prog: unknown flag: $1 (use '--' to pass args to claude)" >&2
+      exit 2
+      ;;
+    *)
+      echo "$prog: unknown argument: $1 (use '--' to pass args to claude)" >&2
+      exit 2
       ;;
   esac
 done
 
-# Preset flag bundles — edit freely.
-preset_flags=()
-case "${1:-}" in
-  plan)    preset_flags=(--permission-mode plan);         shift ;;
-  accept)  preset_flags=(--permission-mode acceptEdits);  shift ;;
-  auto)    preset_flags=(--permission-mode auto);         shift ;;
-  yolo)    preset_flags=(--dangerously-skip-permissions); shift ;;
-  opus)    preset_flags=(--model opus);                   shift ;;
-  sonnet)  preset_flags=(--model sonnet);                 shift ;;
-esac
+if [ "$resume_mode" -eq 1 ] && [ "$continue_mode" -eq 1 ]; then
+  echo "$prog: -r/--resume and -c/--continue are mutually exclusive" >&2
+  exit 2
+fi
 
+# ---- expand flags ----
+[ "$continue_mode" -eq 1 ] && preset_flags+=(--continue)
+if [ "$resume_mode" -eq 1 ]; then
+  if [ -n "$resume_id" ]; then
+    preset_flags+=(--resume "$resume_id")
+  else
+    preset_flags+=(--resume)
+  fi
+fi
+
+# ---- compute session name ----
 if [ -n "$name_override" ]; then
   name="cc-$name_override"
 else
   name=$(project_name)
 fi
-if [ "$rc_mode" -eq 1 ]; then
-  # Timestamp so each RC session is distinct; find it later via sesh-pick.
-  name="${name}-$(date +%Y%m%d-%H%M%S)"
-  preset_flags+=(--remote-control)
+
+# Session identity is the project slug. Modifiers (--rc, -c, -r) don't
+# appear in the name; a YY-MM-DD-HHMM timestamp is appended only when a
+# modifier implies a new, distinct session so repeated invocations don't
+# collide.
+if [ "$rc_mode" -eq 1 ] || [ "$continue_mode" -eq 1 ] || [ "$resume_mode" -eq 1 ]; then
+  name="${name}-$(date +%y-%m-%d-%H%M)"
 fi
 
+# RC flag + prefix pass-through (after name is finalized so the prefix matches).
+if [ "$rc_mode" -eq 1 ]; then
+  preset_flags+=(--remote-control)
+  preset_flags+=(--remote-control-session-name-prefix "$name")
+fi
+
+# ---- launch ----
 # Inside tmux: create detached + switch-client (new-session won't nest cleanly).
 # Outside tmux: plain attach-or-new.
 if [ -n "${TMUX:-}" ]; then
   tmux has-session -t "$name" 2>/dev/null \
-    || tmux new-session -d -s "$name" -c "$PWD" claude "${preset_flags[@]}" "$@"
+    || tmux new-session -d -s "$name" -c "$PWD" claude "${preset_flags[@]}" "${extra_args[@]}"
   exec tmux switch-client -t "$name"
 else
   if tmux has-session -t "$name" 2>/dev/null; then
     exec tmux attach -t "$name"
   fi
-  exec tmux new-session -s "$name" -c "$PWD" claude "${preset_flags[@]}" "$@"
+  exec tmux new-session -s "$name" -c "$PWD" claude "${preset_flags[@]}" "${extra_args[@]}"
 fi

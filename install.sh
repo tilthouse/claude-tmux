@@ -9,7 +9,18 @@ mkdir -p "$BIN"
 
 link() {
   local src="$1" dest="$2"
+  # Already correctly linked? No-op (idempotent re-run).
+  if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$src" ]; then
+    echo "Already linked: $dest"
+    return
+  fi
+  # Regular file — preserve with .bak. Refuse to overwrite an existing .bak.
   if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+    if [ -e "$dest.bak" ]; then
+      echo "ERROR: $dest is a regular file and $dest.bak already exists." >&2
+      echo "       Resolve manually (move/remove one) and re-run." >&2
+      return 1
+    fi
     mv "$dest" "$dest.bak"
     echo "Backed up $dest → $dest.bak"
   elif [ -L "$dest" ]; then
