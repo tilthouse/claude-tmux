@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# claude-tmux — launch or attach a per-project Claude Code tmux session.
+# Invocation name (cct, claude-tmux, or other symlink) is detected at runtime
+# and used throughout the help text so examples match however you call it.
+set -eo pipefail
+
+prog=$(basename "$0")
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  cat <<EOF
+$prog — launch or attach a per-project Claude Code tmux session.
+
+USAGE
+  $prog [-n name] [rc] [preset] [-- claude args...]
+
+FLAGS
+  -n <name>    Override the session basename for this invocation.
+               Takes precedence over .cct-name at the git root.
+  -h, --help   Show this help and exit.
+
+MODIFIERS
+  rc           Enable Remote Control (--remote-control). The session name
+               gets a timestamp suffix so repeated invocations don't
+               collide: cc-<name>-YYYYMMDD-HHMMSS.
+
+PRESETS
+  plan         --permission-mode plan
+  accept       --permission-mode acceptEdits
+  auto         --permission-mode auto
+  yolo         --dangerously-skip-permissions
+  opus         --model opus
+  sonnet       --model sonnet
+
+SESSION NAMING  (precedence, highest to lowest)
+  1. -n <name>                                  →  cc-<name>
+  2. .cct-name file at the git root (one line)  →  cc-<file contents>
+  3. git rev-parse --show-toplevel basename     →  cc-<basename>
+  4. Current directory basename (no git repo)   →  cc-<basename>
+  With \`rc\`, a -YYYYMMDD-HHMMSS suffix is appended in all cases.
+
+EXAMPLES
+  $prog                         # Default: cc-<project>, no flags
+  $prog plan                    # Plan-mode session for this project
+  $prog yolo                    # Skip all permission prompts
+  $prog sonnet                  # Force Sonnet model
+  $prog rc                      # Remote Control, no preset
+  $prog rc plan                 # Remote Control + plan preset
+  $prog -n experiment           # One-off session: cc-experiment
+  $prog -n scratch plan         # cc-scratch in plan mode
+  $prog rc -n live-demo         # cc-live-demo-YYYYMMDD-HHMMSS, RC on
+  $prog -n scratch rc yolo      # Any flag/modifier order works
+  $prog -- --add-dir ../brand   # Plain session; pass flags through to claude
+
+FILES
+  <git-root>/.cct-name   Persistent per-repo session-name override.
+                         Commit to share with teammates, or .gitignore
+                         it to keep local.
+
+BEHAVIOR
+  - If the session already exists, $prog attaches to it. Presets only
+    apply when creating a new session; attach preserves whatever claude
+    was started with.
+  - Inside tmux: creates a detached session and switch-clients into it.
+    Outside tmux: plain attach-or-new.
+EOF
+  exit 0
+fi
+
+project_name() {
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || root="$PWD"
+  # Per-repo override: .cct-name at the git root contains the session basename
+  # (everything after the `cc-` prefix). Useful when the dir name is generic
+  # (e.g. `site`) and you want the session tied to a more distinctive name.
+  if [ -f "$root/.cct-name" ]; then
+    local override
+    override=$(head -n1 "$root/.cct-name" | tr -d '[:space:]')
+    if [ -n "$override" ]; then
+      echo "cc-$override"
+      return
+    fi
+  fi
+  echo "cc-$(basename "$root")"
+}
+
+# Pre-preset modifiers: `-n <name>` and `rc` in any order before the preset.
+name_override=""
+rc_mode=0
+while :; do
+  case "${1:-}" in
+    -n)
+      shift
+      if [ -z "${1:-}" ]; then
+        echo "$prog: -n requires a session basename" >&2
+        exit 2
+      fi
+      name_override="$1"
+      shift
+      ;;
+    rc)
+      rc_mode=1
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+# Preset flag bundles — edit freely.
+preset_flags=()
+case "${1:-}" in
+  plan)    preset_flags=(--permission-mode plan);         shift ;;
+  accept)  preset_flags=(--permission-mode acceptEdits);  shift ;;
+  auto)    preset_flags=(--permission-mode auto);         shift ;;
+  yolo)    preset_flags=(--dangerously-skip-permissions); shift ;;
+  opus)    preset_flags=(--model opus);                   shift ;;
+  sonnet)  preset_flags=(--model sonnet);                 shift ;;
+esac
+
+if [ -n "$name_override" ]; then
+  name="cc-$name_override"
+else
+  name=$(project_name)
+fi
+if [ "$rc_mode" -eq 1 ]; then
+  # Timestamp so each RC session is distinct; find it later via sesh-pick.
+  name="${name}-$(date +%Y%m%d-%H%M%S)"
+  preset_flags+=(--remote-control)
+fi
+
+# Inside tmux: create detached + switch-client (new-session won't nest cleanly).
+# Outside tmux: plain attach-or-new.
+if [ -n "${TMUX:-}" ]; then
+  tmux has-session -t "$name" 2>/dev/null \
+    || tmux new-session -d -s "$name" -c "$PWD" claude "${preset_flags[@]}" "$@"
+  exec tmux switch-client -t "$name"
+else
+  if tmux has-session -t "$name" 2>/dev/null; then
+    exec tmux attach -t "$name"
+  fi
+  exec tmux new-session -s "$name" -c "$PWD" claude "${preset_flags[@]}" "$@"
+fi
