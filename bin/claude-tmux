@@ -21,9 +21,13 @@ PRESETS  (positional, any order, mutually exclusive within a category)
     $prog plan sonnet   →  --permission-mode plan  +  --model sonnet
 
 OPTIONS
-  --rc                 Enable Remote Control. Also passes the tmux session
-                       name to claude as the RC session prefix, so the
-                       mobile app picker shows a human-readable name.
+  --rc                 Enable Remote Control. Passes a timestamped
+                       prefix (cc-<basename>-YY-MM-DD-HHMM) to claude
+                       via --remote-control-session-name-prefix so
+                       the mobile picker shows a distinct, readable
+                       entry per invocation. The tmux session name
+                       itself stays plain cc-<basename> so rerunning
+                       with --rc attaches to the existing RC session.
   -r, --resume [id]    Resume a Claude conversation. With an id: resumes
                        that specific session. Without: opens Claude's
                        interactive picker.
@@ -41,17 +45,24 @@ SESSION NAMING  (basename precedence, highest → lowest)
   3. git rev-parse --show-toplevel basename     →  cc-<basename>
   4. Current directory basename (no git repo)   →  cc-<basename>
 
-  Session identity is the basename above. Modifiers (--rc, -c, -r) do
-  not appear in the name. A YY-MM-DD-HHMM timestamp is appended only
-  when a modifier implies a new, distinct session, so repeated
-  invocations don't collide.
+  The tmux session name is always cc-<basename>. Modifiers (--rc,
+  -c, -r) and presets never change it, so $prog in a project always
+  attaches to the same session when one exists. With --rc, a
+  timestamped prefix (cc-<basename>-YY-MM-DD-HHMM) is passed to
+  claude so the mobile RC picker shows a distinct entry per
+  invocation.
 
-    cct               →  cc-<basename>
-    cct --rc          →  cc-<basename>-26-04-19-1617
-    cct -c            →  cc-<basename>-26-04-19-1617
-    cct -r [id]       →  cc-<basename>-26-04-19-1617
-    cct plan sonnet   →  cc-<basename>             (presets affect claude
-                                                    flags only, not name)
+    $prog               →  cc-<basename>
+    $prog --rc          →  cc-<basename>   (RC prefix: cc-<basename>-26-04-19-1617)
+    $prog -c            →  cc-<basename>   (only if no session exists — see below)
+    $prog -r [id]       →  cc-<basename>   (only if no session exists — see below)
+    $prog plan sonnet   →  cc-<basename>   (presets affect claude flags only, not name)
+
+  -c and -r are claude-process-start flags; they only apply when
+  $prog creates a new session. If cc-<basename> is already running,
+  $prog -c/-r exits with an error (rather than silently attaching
+  to the existing claude). Kill the session first, or use
+  \`$prog -n <name>\` for a concurrent distinct session.
 
 EXAMPLES
   $prog                           Default: cc-<project>, no flags
@@ -81,8 +92,11 @@ BEHAVIOR
     attach preserves whatever claude was started with originally.
   - Inside tmux: creates the session detached and switch-clients into it.
     Outside tmux: plain attach-or-new.
-  - With --rc, --remote-control-session-name-prefix=<session-name> is
-    passed to claude so the mobile RC picker shows matching names.
+  - With --rc, --remote-control-session-name-prefix=<name>-<ts> is
+    passed to claude (<ts> is a fresh YY-MM-DD-HHMM). The tmux session
+    name stays plain cc-<basename>; only the RC prefix is timestamped,
+    so the mobile picker can distinguish multiple RC invocations that
+    share one tmux session.
 EOF
   exit 0
 fi
@@ -206,24 +220,38 @@ if [ "$resume_mode" -eq 1 ]; then
 fi
 
 # ---- compute session name ----
+# tmux session name is always plain cc-<basename>, so any cct invocation
+# in a project attaches to the same session. Modifiers (--rc, -c, -r)
+# never change the tmux name — if they would start a distinct
+# conversation, existing attach semantics mean the new flags are
+# ignored; use -n <name> for a concurrent distinct session.
 if [ -n "$name_override" ]; then
   name="cc-$name_override"
 else
   name=$(project_name)
 fi
 
-# Session identity is the project slug. Modifiers (--rc, -c, -r) don't
-# appear in the name; a YY-MM-DD-HHMM timestamp is appended only when a
-# modifier implies a new, distinct session so repeated invocations don't
-# collide.
-if [ "$rc_mode" -eq 1 ] || [ "$continue_mode" -eq 1 ] || [ "$resume_mode" -eq 1 ]; then
-  name="${name}-$(date +%y-%m-%d-%H%M)"
-fi
-
-# RC flag + prefix pass-through (after name is finalized so the prefix matches).
+# RC flag + prefix pass-through. Prefix is name+timestamp so multiple
+# RC conversations for one project remain distinguishable in the mobile
+# picker, even though they share one tmux session.
 if [ "$rc_mode" -eq 1 ]; then
   preset_flags+=(--remote-control)
-  preset_flags+=(--remote-control-session-name-prefix "$name")
+  preset_flags+=(--remote-control-session-name-prefix "${name}-$(date +%y-%m-%d-%H%M)")
+fi
+
+# ---- guard: -c/-r only apply on session create ----
+# --continue and --resume are claude-process-start flags; they can't be
+# applied by attaching to an existing session where claude is already
+# running. Refuse rather than silently no-op, so the user doesn't think
+# they resumed when they just re-attached.
+if [ "$continue_mode" -eq 1 ] || [ "$resume_mode" -eq 1 ]; then
+  if tmux has-session -t "$name" 2>/dev/null; then
+    flag="-c"
+    [ "$resume_mode" -eq 1 ] && flag="-r"
+    echo "$prog: session '$name' already exists; $flag only applies when creating a new session." >&2
+    echo "       Kill it first (tmux kill-session -t '$name') or use -n <name> for a concurrent session." >&2
+    exit 1
+  fi
 fi
 
 # ---- launch ----

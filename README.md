@@ -6,7 +6,7 @@ Per-project tmux session launcher for [Claude Code](https://claude.com/claude-co
 
 - **Per-project sessions.** Derives a stable session name from the git root (or a `.cct-name` override), attaches if the session exists, creates it otherwise. Running `cct` from anywhere inside a repo lands you in the same session.
 - **Preset flag bundles.** Short aliases for common flag combinations: `plan`, `yolo`, `sonnet`, `opus`, `auto`, `accept`.
-- **Remote Control with timestamped sessions.** The `rc` modifier launches Claude with `--remote-control` and appends a timestamp to the session name so repeated RC sessions don't collide.
+- **Remote Control with a timestamped RC prefix.** `--rc` launches Claude with `--remote-control` and passes a timestamped `--remote-control-session-name-prefix` (`cc-<basename>-YY-MM-DD-HHMM`) so the mobile picker shows a distinct entry per invocation. The tmux session name stays plain `cc-<basename>` so repeated `cct --rc` attaches to the existing RC session.
 - **Decorated session picker (`sesh-pick`).** Wraps [sesh](https://github.com/joshmedeski/sesh) with per-session Claude state glyphs: `●` active, `◐` awaiting input, `○` idle, `·` configured-but-not-running.
 
 ## Requirements
@@ -55,7 +55,7 @@ cct -- --add-dir ../sibling   # Pass extra flags through to claude
 3. `git rev-parse --show-toplevel` basename → `cc-<basename>`
 4. Current directory basename (no git repo) → `cc-<basename>`
 
-With `rc`, a `-YYYYMMDD-HHMMSS` suffix is appended in all cases.
+The tmux session name is always `cc-<basename>` — no modifier appends to it. For a concurrent distinct session in the same project, use `cct -n <name>`. With `--rc`, a `-YY-MM-DD-HHMM` timestamp appears only in the RC prefix passed to claude so the mobile picker can distinguish invocations that share one tmux session.
 
 ### Tmux keybinding for the decorated picker
 
