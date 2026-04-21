@@ -1,21 +1,25 @@
 # claude-tmux
 
-Per-project tmux session launcher for [Claude Code](https://claude.com/claude-code), with preset flag bundles and a state-aware session picker.
+Per-project tmux session launcher for [Claude Code](https://claude.com/claude-code),
+with a group mode for multi-project workspaces, a state-aware session picker,
+and cascading per-project default options.
 
-## What it does
+One canonical binary, three shortcuts:
 
-- **Per-project sessions.** Derives a stable session name from the git root (or a `.cct-name` override), attaches if the session exists, creates it otherwise. Running `cct` from anywhere inside a repo lands you in the same session.
-- **Preset flag bundles.** Short aliases for common flag combinations: `plan`, `yolo`, `sonnet`, `opus`, `auto`, `accept`.
-- **Remote Control with a timestamped RC prefix.** `--rc` launches Claude with `--remote-control` and passes a timestamped `--remote-control-session-name-prefix` (`cc-<basename>-YY-MM-DD-HHMM`) so the mobile picker shows a distinct entry per invocation. The tmux session name stays plain `cc-<basename>` so repeated `cct --rc` attaches to the existing RC session.
-- **Decorated session picker (`sesh-pick`).** Wraps [sesh](https://github.com/joshmedeski/sesh) with per-session Claude state glyphs: `●` active, `◐` awaiting input, `○` idle, `·` configured-but-not-running.
+```
+claude-tmux <subcommand> [options] [positional]
+
+cct  =  claude-tmux project      # single-project attach-or-create
+ccg  =  claude-tmux group        # multi-project dashboard + group management
+ccs  =  claude-tmux sess-pick    # decorated sesh picker (alias: pick)
+```
 
 ## Requirements
 
 - [tmux](https://github.com/tmux/tmux) 3.x
 - [Claude Code](https://claude.com/claude-code) on `PATH` as `claude`
-- For `sesh-pick`: [sesh](https://github.com/joshmedeski/sesh), [fzf](https://github.com/junegunn/fzf); [zoxide](https://github.com/ajeetdsouza/zoxide) recommended
-
-Homebrew:
+- Ruby ≥ 3.0 (asdf, rbenv, or system Ruby)
+- For `ccs` and `ccg`'s interactive picker: [sesh](https://github.com/joshmedeski/sesh) + [fzf](https://github.com/junegunn/fzf); [zoxide](https://github.com/ajeetdsouza/zoxide) recommended.
 
 ```bash
 brew install tmux sesh fzf zoxide
@@ -23,61 +27,175 @@ brew install tmux sesh fzf zoxide
 
 ## Install
 
+### From RubyGems (recommended)
+
+```bash
+gem install claude-tmux
+```
+
+Then put `$GEM_HOME/bin` on your `PATH`.
+
+### From source (local symlinks)
+
 ```bash
 git clone https://github.com/tilthouse/claude-tmux ~/Developer/tools/claude-tmux
 ~/Developer/tools/claude-tmux/install.sh
 ```
 
-The installer symlinks `claude-tmux`, `sesh-pick`, and `cct` (a convenience alias-as-symlink for `claude-tmux`) into `~/.local/bin/`. Ensure that's on your `PATH`.
+`install.sh` symlinks `claude-tmux`, `cct`, `ccg`, and `ccs` into `~/.local/bin/`.
 
-## Usage
-
-```
-cct --help
-```
-
-### Common patterns
-
-```bash
-cct                           # Default session for current project
-cct plan                      # Plan mode
-cct yolo                      # Skip all permission prompts
-cct rc                        # Remote Control, timestamped session
-cct rc plan                   # Remote Control + plan mode
-cct -n scratch                # Override session name: cc-scratch
-cct -- --add-dir ../sibling   # Pass extra flags through to claude
-```
-
-### Session naming precedence
-
-1. `-n <name>` command-line flag → `cc-<name>`
-2. `.cct-name` file at git root → `cc-<file contents>`
-3. `git rev-parse --show-toplevel` basename → `cc-<basename>`
-4. Current directory basename (no git repo) → `cc-<basename>`
-
-The tmux session name is always `cc-<basename>` — no modifier appends to it. For a concurrent distinct session in the same project, use `cct -n <name>`. With `--rc`, a `-YY-MM-DD-HHMM` timestamp appears only in the RC prefix passed to claude so the mobile picker can distinguish invocations that share one tmux session.
-
-### Tmux keybinding for the decorated picker
-
-Add to your `~/.tmux.conf`:
+## `cct` — per-project launcher
 
 ```
-bind-key s display-popup -E -w 60% -h 70% "sesh-pick"
+cct                              # attach-or-create cc-<cwd-project>
+cct -p plan                      # plan mode
+cct --yolo                       # skip all permission prompts
+cct -p plan -m sonnet            # plan mode + Sonnet
+cct --rc                         # Remote Control (timestamped prefix)
+cct -c                           # continue latest conversation
+cct -r [ID]                      # resume specific conversation / picker
+cct -n scratch                   # one-off session: cc-scratch
+cct ~/Developer/foo              # launch in a different dir
+cct -- --add-dir ../sibling      # passthrough to claude
+```
+
+**Options:** `-p/--permission {plan|accept|auto}`, `-m/--model {opus|sonnet}`,
+`--yolo`, `--rc`, `-n/--name`, `-c/--continue`, `-r/--resume [ID]`.
+
+**Session naming precedence (highest → lowest):**
+
+1. `-n NAME`
+2. `[project] name` from the cascading options cascade (see below)
+3. `<git-root>` basename of `DIR` or `$PWD`
+4. basename of `DIR` or `$PWD` (no git repo)
+
+Always prefixed with `cc-`. Modifiers (`--rc`, `-c`, `-r`) never change the
+tmux session name — rerunning `cct` in the same project attaches. With
+`--rc`, a `-YY-MM-DD-HHMM` timestamp is passed to claude as the RC prefix
+(so the mobile picker distinguishes invocations), but the tmux name is
+unchanged.
+
+`-c` and `-r` error out if the target session is already running
+(they create a new claude with those flags; they can't apply to an
+already-running process). Kill the session first, or use `-n <name>`
+for a concurrent session.
+
+## `ccg` — group mode
+
+One tmux window per project inside a grouping session (`ccg-<label>`).
+Per-project source sessions stay `cc-<project>` so they remain reachable
+via `cct` in their repos.
+
+```
+ccg                              # interactive picker
+ccg morning                      # launch a named group from config
+ccg ~/Developer/a ~/Developer/b  # ad-hoc list of paths
+ccg morning ~/Developer/extra    # named group + extras
+ccg morning evening              # union of multiple groups
+ccg -p plan -m sonnet morning    # default flags for newly-created sources
+ccg --rc morning                 # RC on newly-created sources (shared timestamp)
+ccg -n work morning              # override grouping-session label: ccg-work
+```
+
+`-c` and `-r` are rejected in group mode (each project's conversation is
+independent).
+
+### Group management
+
+```
+ccg add <group> <path> [OPTIONS]   # add/update entry (. for $PWD)
+ccg rm  <group> <path>             # remove one entry
+ccg rm  <group>                    # delete the whole group
+ccg list                           # list groups with counts
+ccg list <group>                   # dump one group's entries
+ccg edit                           # open groups.conf in $EDITOR
+```
+
+`add` accepts the same `-p`, `-m`, `--yolo` options as launch — they're
+stored inline with the entry in `groups.conf`.
+
+### Config — `~/.config/cct/groups.conf`
+
+INI-ish, one path per line, optional trailing preset tokens per entry:
+
+```
+[morning]
+~/Developer/projA
+~/Developer/projB plan
+~/Developer/projC plan sonnet
+
+[evening]
+~/Developer/projD
+```
+
+## Default options via TOML dotfiles
+
+Any CLI option can be preset via a TOML config file. Two locations:
+
+- **Per-project:** `.claude-tmux.toml` at any directory in the ancestor
+  walk from `$PWD` up to (and including) `$HOME`. Multiple files can
+  exist in the same tree; they are merged with deeper dirs winning.
+- **User-wide:** `~/.config/cct/options.toml`, applied as the lowest-priority
+  baseline beneath the cascade.
+
+```toml
+# .claude-tmux.toml or ~/.config/cct/options.toml
+
+permission = "plan"      # plan | accept | auto
+model      = "sonnet"    # opus | sonnet
+yolo       = false
+rc         = false
+
+[project]
+name = "my-session"      # overrides session basename (used by cct)
+
+[group]
+label = "work"           # overrides grouping-session label (used by ccg)
+```
+
+**Precedence (highest → lowest):**
+
+1. CLI flags
+2. Per-entry presets in `groups.conf` (group mode only)
+3. `.claude-tmux.toml` cascade (deepest ancestor wins)
+4. `~/.config/cct/options.toml` (user-wide baseline)
+5. Built-in defaults
+
+Unknown keys are logged to stderr and ignored (forward-compatible).
+Invalid enum values and malformed TOML raise a parse error with the
+file path and line/column.
+
+## `ccs` — decorated sesh picker
+
+Wraps `sesh list | fzf | sesh connect` and prepends a per-session glyph
+derived from `tmux capture-pane`:
+
+- `●` active — pane contains `"esc to interrupt"` (Claude is running a tool call)
+- `◐` awaiting input — pane contains `"Do you want"` or a numbered-option prompt
+- `○` idle
+- `·` configured but no tmux session is running
+
+Patterns live in `lib/claude_tmux/picker.rb`; if Claude Code rewords a
+prompt and a glyph stops updating, that's the first place to look.
+
+### Tmux keybinding
+
+```
+bind-key s display-popup -E -w 60% -h 70% "ccs"
 bind-key S choose-tree -Zs
 ```
 
-This swaps tmux's default `prefix+s` (choose-tree) onto uppercase `S` and puts the decorated picker on the ergonomic lowercase binding.
+## Development
 
-## How the picker glyphs work
+```bash
+bundle install
+bundle exec rspec       # unit tests
+bundle exec rubocop     # style
+```
 
-`sesh-pick` runs `tmux capture-pane` on each session and pattern-matches the output:
-
-- `●` active — pane contains `"esc to interrupt"` (Claude is running a tool call)
-- `◐` awaiting input — pane contains `"Do you want"` or numbered-option prompt markers
-- `○` idle — a Claude session that isn't in either state above (or a non-Claude session)
-- `·` configured but no tmux session is running under that name
-
-Patterns live at the top of `bin/sesh-pick`; if Claude Code rewords any prompt strings, update them there.
+Local bin scripts resolve `lib/` via `File.realpath(__FILE__)` and
+auto-load Bundler when run from this repo, so editing `bin/` or `lib/`
+takes effect on the next invocation — no `gem install` needed.
 
 ## License
 

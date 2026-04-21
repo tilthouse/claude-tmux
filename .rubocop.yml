@@ -1,0 +1,67 @@
+AllCops:
+  TargetRubyVersion: 3.0
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'vendor/**/*'
+    - 'bin/setup'
+    - 'pkg/**/*'
+
+Style/Documentation:
+  Enabled: false
+
+Style/StringLiterals:
+  EnforcedStyle: single_quotes
+
+# has_session? mirrors the tmux CLI verb; clearer than session?.
+Naming/PredicatePrefix:
+  Enabled: false
+
+# Test doubles return booleans without ?; CRUD methods on Config
+# (#remove_entry, #delete_group) follow DAO conventions, not predicates.
+Naming/PredicateMethod:
+  Exclude:
+    - 'spec/**/*'
+    - 'lib/claude_tmux/config.rb'
+
+# IO.popen takes options as a trailing hash by convention.
+Style/HashAsLastArrayItem:
+  Enabled: false
+
+Metrics/MethodLength:
+  Max: 40
+
+Metrics/ClassLength:
+  Max: 200
+
+Metrics/AbcSize:
+  Max: 40
+
+# Init methods take injectable deps (tmux, config, options_loader, stderr,
+# stdout); keeping them positional + keyword is clearer than a bundle hash.
+Metrics/ParameterLists:
+  Max: 7
+
+# Struct members that shadow built-in Struct methods (e.g., :entries,
+# :values) are intentional — the Struct is acting as a named record.
+Lint/StructNewOverride:
+  Enabled: false
+
+# Dev deps are declared in the gemspec so the gem installs cleanly from
+# source; bundler still reads them via `gemspec` in Gemfile.
+Gemspec/DevelopmentDependencies:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Max: 12
+
+Metrics/PerceivedComplexity:
+  Max: 12
+
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*'
+    - '*.gemspec'
+
+Layout/LineLength:
+  Max: 140
