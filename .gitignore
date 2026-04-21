@@ -2,6 +2,7 @@
 *.log
 .DS_Store
 /.bundle/
+/.claude/settings.local.json
 /vendor/bundle/
 /pkg/
 /coverage/
