@@ -193,9 +193,29 @@ module ClaudeTmux
       expanded
     end
 
+    def absolute_or_tilde?(path)
+      path.start_with?('/') || path.start_with?('~/') || path == '~'
+    end
+
+    def dirty?
+      disk = self.class.new(path: @path).load
+      to_signature != disk.send(:to_signature)
+    end
+
     PERMISSION_PRESETS = (Presets::VALID_PERMISSIONS + ['yolo']).freeze
     MODEL_PRESETS      = Presets::VALID_MODELS
     ALL_PRESETS        = (PERMISSION_PRESETS + MODEL_PRESETS).freeze
+
+    protected
+
+    # Stable structural signature: order-preserved [name, [path, presets]] tuples.
+    # Used by #dirty? to compare in-memory state to a freshly-loaded disk snapshot.
+    def to_signature
+      @order.map do |name|
+        entries = @groups[name].entries.map { |e| [e.path, e.presets.dup] }
+        [name, entries]
+      end
+    end
 
     private
 
@@ -222,10 +242,6 @@ module ClaudeTmux
       raise ConfigError, "#{@path}:#{lineno}: unknown preset(s) after path: #{invalid.join(' ')}" unless invalid.empty?
 
       group.entries << Entry.new(path: path, presets: tokens)
-    end
-
-    def absolute_or_tilde?(path)
-      path.start_with?('/') || path.start_with?('~/') || path == '~'
     end
 
     def validate_group_name!(name)

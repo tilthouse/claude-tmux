@@ -114,6 +114,46 @@ RSpec.describe ClaudeTmux::Config do
     end
   end
 
+  describe '#dirty?' do
+    it 'is false for a freshly loaded snapshot' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/x')
+      cfg.save
+      reloaded = described_class.load(path: @path)
+      expect(reloaded.dirty?).to be(false)
+    end
+
+    it 'is true after an in-memory mutation' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/x')
+      cfg.save
+      reloaded = described_class.load(path: @path)
+      reloaded.add_entry('g', '~/y')
+      expect(reloaded.dirty?).to be(true)
+    end
+
+    it 'is true when the on-disk file is missing but in-memory has groups' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/x')
+      expect(cfg.dirty?).to be(true)
+    end
+
+    it 'is false when both in-memory and on-disk are empty/missing' do
+      cfg = described_class.new(path: @path)
+      expect(cfg.dirty?).to be(false)
+    end
+  end
+
+  describe '#absolute_or_tilde?' do
+    it 'is now public' do
+      cfg = described_class.new(path: @path)
+      expect(cfg.absolute_or_tilde?('/abs')).to be(true)
+      expect(cfg.absolute_or_tilde?('~/x')).to be(true)
+      expect(cfg.absolute_or_tilde?('~')).to be(true)
+      expect(cfg.absolute_or_tilde?('rel')).to be(false)
+    end
+  end
+
   describe '#replace_entry_presets' do
     it 'swaps the presets array on the matching entry' do
       cfg = described_class.new(path: @path)
