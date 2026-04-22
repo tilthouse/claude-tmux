@@ -26,4 +26,30 @@ RSpec.describe ClaudeTmux::Group::ConfigTui do
     expect(tui.run).to eq(0)
     expect(prompt.log.size).to eq(1)
   end
+
+  it 'creates a new group via [+ new group] then exits saving' do
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose,  value: { key: nil, item: '[+ new group]' } },
+                                          { method: :input,   value: 'mornings' },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :confirm, value: true }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    reloaded = ClaudeTmux::Config.load(path: @path)
+    expect(reloaded.group_names).to eq(['mornings'])
+    expect(reloaded.group('mornings').entries).to be_empty
+  end
+
+  it 'shows group_view with entries and returns to groups_list on ESC' do
+    cfg_with('work' => ['~/x', '~/y']).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose, value: { key: nil, item: '[work] (2 projects)' } },
+                                          { method: :choose, value: { key: nil, item: nil } },
+                                          { method: :choose, value: { key: nil, item: nil } }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    expect(tui.run).to eq(0)
+  end
 end

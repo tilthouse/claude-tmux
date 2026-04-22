@@ -127,6 +127,15 @@ module ClaudeTmux
       true
     end
 
+    def create_empty_group(name)
+      validate_group_name!(name)
+      raise ConfigError, "group already exists: #{name}" if @groups.key?(name)
+
+      @groups[name] = Group.new(name: name, entries: [])
+      @order << name
+      true
+    end
+
     def replace_entry_presets(group_name, path, new_presets)
       group = @groups[group_name]
       raise ConfigError, "no such group: #{group_name}" unless group

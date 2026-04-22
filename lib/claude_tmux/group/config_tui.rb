@@ -46,10 +46,37 @@ module ClaudeTmux
         return [:exit] if result[:item].nil?
 
         if result[:item] == '[+ new group]'
-          [:back] # implemented in Task 12
+          name = @prompt.input(label: 'New group name:')
+          return [:next, :groups_list, nil] if name.nil? || name.strip.empty?
+
+          @config.create_empty_group(name.strip)
+          [:next, :group_view, { group: name.strip }]
         else
           name = result[:item][/\[(.+?)\]/, 1]
           [:next, :group_view, { group: name }]
+        end
+      end
+
+      def screen_group_view(payload)
+        name = payload[:group]
+        group = @config.group(name)
+        return [:back] unless group
+
+        items = ['[+ add entry]'] + group.entries.map { |e| [e.path, *e.presets].join('  ') }
+        result = @prompt.choose(items, header: "[#{name}]#{' *' if @config.dirty?}",
+                                       expect: %w[R D])
+        return [:back] if result[:item].nil? && result[:key].nil?
+
+        case result[:key]
+        when 'R' then [:next, :rename_group, { group: name }]
+        when 'D' then [:next, :delete_group, { group: name }]
+        else
+          if result[:item] == '[+ add entry]'
+            [:next, :add_entry, { group: name }]
+          else
+            path = result[:item].split('  ', 2).first
+            [:next, :action_menu, { group: name, path: path }]
+          end
         end
       end
 

@@ -119,6 +119,26 @@ RSpec.describe ClaudeTmux::Config do
     end
   end
 
+  describe '#create_empty_group' do
+    it 'creates a group with no entries' do
+      cfg = described_class.new(path: @path)
+      cfg.create_empty_group('mornings')
+      expect(cfg.group_names).to eq(['mornings'])
+      expect(cfg.group('mornings').entries).to be_empty
+    end
+
+    it 'raises if the name already exists' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('a', '~/x')
+      expect { cfg.create_empty_group('a') }.to raise_error(ClaudeTmux::ConfigError, /already exists/)
+    end
+
+    it 'raises on a reserved name' do
+      cfg = described_class.new(path: @path)
+      expect { cfg.create_empty_group('add') }.to raise_error(ClaudeTmux::ConfigError, /reserved/)
+    end
+  end
+
   describe '#dirty?' do
     it 'is false for a freshly loaded snapshot' do
       cfg = described_class.new(path: @path)
