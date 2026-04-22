@@ -114,6 +114,42 @@ RSpec.describe ClaudeTmux::Config do
     end
   end
 
+  describe '#replace_entry_presets' do
+    it 'swaps the presets array on the matching entry' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/x', ['plan'])
+      cfg.replace_entry_presets('g', '~/x', %w[sonnet])
+      expect(cfg.group('g').entries.first.presets).to eq(%w[sonnet])
+    end
+
+    it 'matches paths by canonical (expanded) form' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', "#{Dir.home}/x", ['plan'])
+      cfg.replace_entry_presets('g', '~/x', %w[sonnet])
+      expect(cfg.group('g').entries.first.presets).to eq(%w[sonnet])
+    end
+
+    it 'raises when the group is missing' do
+      cfg = described_class.new(path: @path)
+      expect { cfg.replace_entry_presets('g', '~/x', []) }
+        .to raise_error(ClaudeTmux::ConfigError, /no such group/)
+    end
+
+    it 'raises when the entry is not found' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/x')
+      expect { cfg.replace_entry_presets('g', '~/y', []) }
+        .to raise_error(ClaudeTmux::ConfigError, /no such entry/)
+    end
+
+    it 'validates the new presets via existing rules' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/x')
+      expect { cfg.replace_entry_presets('g', '~/x', %w[plan yolo]) }
+        .to raise_error(ClaudeTmux::ConfigError, /conflicting permission/)
+    end
+  end
+
   describe '#move_entry' do
     it 'moves an entry to a new index within the group' do
       cfg = described_class.new(path: @path)

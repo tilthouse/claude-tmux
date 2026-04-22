@@ -127,6 +127,20 @@ module ClaudeTmux
       true
     end
 
+    def replace_entry_presets(group_name, path, new_presets)
+      group = @groups[group_name]
+      raise ConfigError, "no such group: #{group_name}" unless group
+
+      validate_presets!(new_presets)
+
+      expanded = File.expand_path(path)
+      entry = group.entries.find { |e| File.expand_path(e.path) == expanded }
+      raise ConfigError, "no such entry in [#{group_name}]: #{path}" unless entry
+
+      entry.presets = new_presets
+      true
+    end
+
     def move_entry(group_name, from_idx, to_idx)
       group = @groups[group_name]
       raise ConfigError, "no such group: #{group_name}" unless group
