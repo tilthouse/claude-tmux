@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file. Format:
 - Bare `ccg` no longer crashes with `TypeError` when the interactive
   picker yields a selection — picker output now flows through the
   normal Resolver pipeline.
+- `ccg <group>` dashboards are no longer empty on tmux configurations
+  with `base-index 1`. `build_dashboard` now looks up each source
+  session's actual first-window index instead of hardcoding `:0`,
+  which was silently failing on non-default base-index setups.
 
 ### Changed
 

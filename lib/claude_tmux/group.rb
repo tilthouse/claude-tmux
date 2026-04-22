@@ -239,7 +239,11 @@ module ClaudeTmux
         project_name = entry[:session].sub(/\Acc-/, '')
         next if existing_names.include?(project_name)
 
-        @tmux.link_window("#{entry[:session]}:0", dashboard)
+        # Source's first window may not be at index 0 — tmux base-index can be 1.
+        src_idx, = @tmux.list_windows(entry[:session]).first
+        next unless src_idx
+
+        @tmux.link_window("#{entry[:session]}:#{src_idx}", dashboard)
         last_idx, = @tmux.list_windows(dashboard).last
         @tmux.rename_window("#{dashboard}:#{last_idx}", project_name)
       end
