@@ -19,10 +19,13 @@ Naming/PredicatePrefix:
 
 # Test doubles return booleans without ?; CRUD methods on Config
 # (#remove_entry, #delete_group) follow DAO conventions, not predicates.
+# Prompt#confirm answers a yes/no but is named after the verb (the
+# user-visible action), not the result.
 Naming/PredicateMethod:
   Exclude:
     - 'spec/**/*'
     - 'lib/claude_tmux/config.rb'
+    - 'lib/claude_tmux/prompt.rb'
 
 # IO.popen takes options as a trailing hash by convention.
 Style/HashAsLastArrayItem:
