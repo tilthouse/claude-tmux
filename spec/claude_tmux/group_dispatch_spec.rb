@@ -30,6 +30,36 @@ RSpec.describe ClaudeTmux::Group, 'subcommand dispatch' do
     end
   end
 
+  it 'routes `ccg config` to ConfigTui' do
+    Dir.mktmpdir do |dir|
+      conf = File.join(dir, 'groups.conf')
+      File.write(conf, "[work]\n~/x\n")
+      stub_const('ClaudeTmux::Config::DEFAULT_PATH', conf)
+      fake = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose, value: { key: nil, item: nil } }
+                                        ])
+      allow(ClaudeTmux::Prompt).to receive(:new).and_return(fake)
+
+      group = described_class.new('ccg', %w[config])
+      expect(group.run).to eq(0)
+    end
+  end
+
+  it 'routes `ccg c` (prefix) to ConfigTui' do
+    Dir.mktmpdir do |dir|
+      conf = File.join(dir, 'groups.conf')
+      File.write(conf, "[work]\n~/x\n")
+      stub_const('ClaudeTmux::Config::DEFAULT_PATH', conf)
+      fake = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose, value: { key: nil, item: nil } }
+                                        ])
+      allow(ClaudeTmux::Prompt).to receive(:new).and_return(fake)
+
+      group = described_class.new('ccg', %w[c])
+      expect(group.run).to eq(0)
+    end
+  end
+
   it 'lets unknown bareword fall through to launch path (existing classifier)' do
     Dir.mktmpdir do |dir|
       conf = File.join(dir, 'groups.conf')

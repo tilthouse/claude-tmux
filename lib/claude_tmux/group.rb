@@ -12,7 +12,7 @@ module ClaudeTmux
   # sources; killing a source's claude closes both windows naturally.
   class Group
     DASHBOARD_PREFIX     = 'ccg-'
-    RESERVED_SUBCOMMANDS = %w[add rm list edit].freeze
+    RESERVED_SUBCOMMANDS = %w[add rm list edit config].freeze
 
     attr_reader :prog, :argv
 
@@ -54,11 +54,16 @@ module ClaudeTmux
 
     def run_management(cmd)
       case cmd
-      when 'add'  then cmd_add(@argv)
-      when 'rm'   then cmd_rm(@argv)
-      when 'list' then cmd_list(@argv)
-      when 'edit' then cmd_edit
+      when 'add'    then cmd_add(@argv)
+      when 'rm'     then cmd_rm(@argv)
+      when 'list'   then cmd_list(@argv)
+      when 'edit'   then cmd_edit
+      when 'config' then cmd_config
       end
+    end
+
+    def cmd_config
+      ConfigTui.new(config_path: Config::DEFAULT_PATH).run
     end
 
     def cmd_add(args)
@@ -260,3 +265,5 @@ require_relative 'group/management_parser'
 require_relative 'group/resolver'
 require_relative 'group/interactive_picker'
 require_relative 'group/help'
+require_relative 'group/config_tui'
+require_relative 'group/config_tui/candidate_builder'
