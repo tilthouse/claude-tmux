@@ -31,7 +31,10 @@ module ClaudeTmux
     def run
       return print_help if %w[-h --help help].include?(@argv.first)
 
-      return run_management(@argv.shift) if @argv.first && RESERVED_SUBCOMMANDS.include?(@argv.first)
+      if @argv.first && (resolved = PrefixResolver.resolve(@argv.first, RESERVED_SUBCOMMANDS))
+        @argv.shift
+        return run_management(resolved)
+      end
 
       run_launch
     end
