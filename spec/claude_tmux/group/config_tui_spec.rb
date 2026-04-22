@@ -12,7 +12,13 @@ RSpec.describe ClaudeTmux::Group::ConfigTui do
 
   def cfg_with(groups)
     cfg = ClaudeTmux::Config.new(path: @path)
-    groups.each { |name, paths| paths.each { |p| cfg.add_entry(name, p) } }
+    groups.each do |name, paths|
+      if paths.empty?
+        cfg.create_empty_group(name)
+      else
+        paths.each { |p| cfg.add_entry(name, p) }
+      end
+    end
     cfg
   end
 
@@ -89,7 +95,7 @@ RSpec.describe ClaudeTmux::Group::ConfigTui do
     cfg_with('work' => ['~/x']).save
     prompt = ClaudeTmux::FakePrompt.new(responses: [
                                           { method: :choose,  value: { key: nil, item: '[work] (1 project)' } },
-                                          { method: :choose,  value: { key: 'R',  item: nil } },
+                                          { method: :choose,  value: { key: 'R', item: nil } },
                                           { method: :input,   value: 'office' },
                                           { method: :choose,  value: { key: nil, item: nil } },
                                           { method: :choose,  value: { key: nil, item: nil } },
@@ -105,7 +111,7 @@ RSpec.describe ClaudeTmux::Group::ConfigTui do
     cfg_with('work' => ['~/x'], 'life' => ['~/y']).save
     prompt = ClaudeTmux::FakePrompt.new(responses: [
                                           { method: :choose,  value: { key: nil, item: '[work] (1 project)' } },
-                                          { method: :choose,  value: { key: 'D',  item: nil } },
+                                          { method: :choose,  value: { key: 'D', item: nil } },
                                           { method: :confirm, value: true },
                                           { method: :choose,  value: { key: nil, item: nil } },
                                           { method: :confirm, value: true }
@@ -116,11 +122,43 @@ RSpec.describe ClaudeTmux::Group::ConfigTui do
     expect(reloaded.group_names).to eq(['life'])
   end
 
+  it 'adds a candidate-list entry to the group' do
+    cfg_with('work' => [], 'life' => ['~/elsewhere']).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose,  value: { key: nil, item: '[work] (0 projects)' } },
+                                          { method: :choose,  value: { key: nil, item: '[+ add entry]' } },
+                                          { method: :choose,  value: { key: nil, item: "[group:life]\t~/elsewhere", query: nil } },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :confirm, value: true }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    reloaded = ClaudeTmux::Config.load(path: @path)
+    expect(reloaded.group('work').entries.map(&:path)).to eq(['~/elsewhere'])
+  end
+
+  it 'adds an ad-hoc typed path when no row matches and the query is path-shaped' do
+    cfg_with('work' => []).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose,  value: { key: nil, item: '[work] (0 projects)' } },
+                                          { method: :choose,  value: { key: nil, item: '[+ add entry]' } },
+                                          { method: :choose,  value: { key: nil, item: nil, query: '~/typed' } },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :confirm, value: true }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    reloaded = ClaudeTmux::Config.load(path: @path)
+    expect(reloaded.group('work').entries.map(&:path)).to eq(['~/typed'])
+  end
+
   it 'cancels delete when not confirmed' do
     cfg_with('work' => ['~/x']).save
     prompt = ClaudeTmux::FakePrompt.new(responses: [
                                           { method: :choose,  value: { key: nil, item: '[work] (1 project)' } },
-                                          { method: :choose,  value: { key: 'D',  item: nil } },
+                                          { method: :choose,  value: { key: 'D', item: nil } },
                                           { method: :confirm, value: false },
                                           { method: :choose,  value: { key: nil, item: nil } },
                                           { method: :choose,  value: { key: nil, item: nil } }

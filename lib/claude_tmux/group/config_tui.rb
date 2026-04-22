@@ -89,6 +89,31 @@ module ClaudeTmux
         end
       end
 
+      def screen_add_entry(payload)
+        group = payload[:group]
+        rows = CandidateBuilder.new(config: @config, current_group: group).build
+        items = rows.map { |r| "#{r[:tag]}\t#{r[:path]}" }
+        result = @prompt.choose(items, header: "[#{group}] add entry — type a path or pick one",
+                                       print_query: true)
+
+        path = pick_add_entry_path(result)
+        return [:back] unless path
+
+        @config.add_entry(group, path)
+        [:back]
+      end
+
+      def pick_add_entry_path(result)
+        if result[:item]
+          result[:item].split("\t", 2).last
+        elsif result[:query] && @config.absolute_or_tilde?(result[:query])
+          result[:query]
+        else
+          @stderr.puts "ccg: not a valid path: #{result[:query].inspect}" if result[:query] && !result[:query].empty?
+          nil
+        end
+      end
+
       def screen_rename_group(payload)
         old_name = payload[:group]
         new_name = @prompt.input(label: "Rename [#{old_name}] to:")
