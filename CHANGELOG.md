@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file. Format:
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), adherence to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- `ccg config` — interactive TUI for managing groups (browse, create,
+  rename, delete; add, remove, reorder entries; edit per-entry presets).
+  fzf-driven; stages all changes in memory and prompts to save on exit.
+- Subcommand prefix matching at top-level (`claude-tmux pi` → `pick`)
+  and Group dispatch (`ccg c` → `config`). Exact match wins; ambiguous
+  prefix raises with the candidate list.
+- `ccg help` accepted as an alias for `ccg --help`.
+
+### Fixed
+
+- Bare `ccg` no longer crashes with `TypeError` when the interactive
+  picker yields a selection — picker output now flows through the
+  normal Resolver pipeline.
+
+### Changed
+
+- `Config#absolute_or_tilde?` is now public (consumed by `ConfigTui`).
+- `Config::RESERVED_WORDS` now includes `config` and `help`.
+
 ## [0.3.0] - 2026-04-21
 
 ### Breaking

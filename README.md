@@ -103,16 +103,35 @@ independent).
 ### Group management
 
 ```
-ccg add <group> <path> [OPTIONS]   # add/update entry (. for $PWD)
-ccg rm  <group> <path>             # remove one entry
-ccg rm  <group>                    # delete the whole group
-ccg list                           # list groups with counts
-ccg list <group>                   # dump one group's entries
-ccg edit                           # open groups.conf in $EDITOR
+ccg add    <group> <path> [OPTIONS]   # add/update entry (. for $PWD)
+ccg rm     <group> <path>             # remove one entry
+ccg rm     <group>                    # delete the whole group
+ccg list                              # list groups with counts
+ccg list   <group>                    # dump one group's entries
+ccg edit                              # open groups.conf in $EDITOR
+ccg config                            # interactive TUI for managing groups
 ```
 
 `add` accepts the same `-p`, `-m`, `--yolo` options as launch — they're
 stored inline with the entry in `groups.conf`.
+
+Subcommands resolve by unique prefix: `ccg c` → `config`, `ccg l` → `list`,
+etc. Ambiguous prefixes error with the candidate list.
+
+### Interactive editing — `ccg config`
+
+`ccg config` opens an fzf-driven TUI for managing groups without
+hand-editing the file. Browse groups, create / rename / delete groups,
+add / remove / reorder entries, and edit per-entry presets. Hotkeys
+inside a group view: `R` rename, `D` delete (with confirm). All changes
+stage in memory; you'll be prompted to save on exit.
+
+Add-entry suggestions are aggregated from existing entries in other
+groups, your `sesh list` history, and a walk of `~/Developer` for
+`.git`-bearing repos — deduped by canonical path. You can also type
+an arbitrary path (must start with `/` or `~/`).
+
+`ccg edit` is unchanged — it still opens `groups.conf` in `$EDITOR`.
 
 ### Config — `~/.config/cct/groups.conf`
 

@@ -27,7 +27,9 @@ bundle exec rake build               # pkg/claude-tmux-<version>.gem
 Manual smoke-test shape: `cct --help`, `ccg --help`, `claude-tmux`,
 `claude-tmux project`, `claude-tmux group list`,
 `HOME=/tmp/x ccg add g /tmp/x/proj`, `cct -c` against an existing
-session (guard fires).
+session (guard fires), `ccg config` (TUI; ESC out is enough). Also
+exercise prefix matching: `ccg c` (resolves to `config`), `ccg l`
+(resolves to `list`).
 
 Installed paths under `~/.local/bin/` are symlinks into this repo, so
 edits under `bin/` and `lib/` take effect on the next invocation. Don't
@@ -47,10 +49,16 @@ hand off to `ClaudeTmux::CLI.new($PROGRAM_NAME, ARGV).run`.
    `cct`/`ccg`/`ccs`, route directly to the corresponding handler.
 2. **Subcommand map** (`SUBCOMMANDS`): if invoked as `claude-tmux`,
    the first positional (`project|group|pick|sess-pick`) selects the
-   handler. `pick` and `sess-pick` are aliases — `ccs` expands to
-   `sess-pick` so the mnemonic is visible in help text.
+   handler, resolved through `PrefixResolver` so unique prefixes work
+   (`claude-tmux pi` → `pick`). `pick` and `sess-pick` are aliases —
+   `ccs` expands to `sess-pick` so the mnemonic is visible in help text.
 
 Bare `claude-tmux` (or with `-h`) prints `CLI#top_level_help`.
+
+`PrefixResolver` (`lib/claude_tmux/prefix_resolver.rb`) is reused by
+`Group#run` for its own subcommand layer (`add|rm|list|edit|config`).
+Exact match wins; ambiguous prefix raises `UsageError` with the
+candidate list.
 
 ### Two session namespaces
 
@@ -78,10 +86,17 @@ decorated. Acceptable by current design; add a `ccg-*` branch to
 
 ### `Group` class (`lib/claude_tmux/group.rb` + `group/*.rb`)
 
-- Management subcommands (`add|rm|list|edit`) are keyed on the **first
-  positional only**. Listed in `Group::RESERVED_SUBCOMMANDS` and
-  rejected as config group names by `Config::RESERVED_WORDS` — two
-  lists, kept in sync so each layer validates independently.
+- Management subcommands (`add|rm|list|edit|config`) are keyed on the
+  **first positional only**, resolved through `PrefixResolver` (so
+  `ccg c` → `config`, etc.). Listed in `Group::RESERVED_SUBCOMMANDS`
+  and rejected as config group names by `Config::RESERVED_WORDS` —
+  two lists, kept in sync so each layer validates independently.
+- `cmd_config` enters `ConfigTui` (`lib/claude_tmux/group/config_tui.rb`),
+  a screen-pushdown loop driven by an injectable `Prompt` abstraction
+  (`lib/claude_tmux/prompt.rb`), with `FakePrompt` for tests. Mutations
+  stage in memory; the user is prompted to save/discard on exit.
+  Add-entry candidates come from `CandidateBuilder` (other groups +
+  `sesh list` + `~/Developer` walk, deduped first-seen-wins).
 - `Parser` (launch path) classifies barewords: pathlike
   (`/`, `./`, `../`, `~/`, `~`) → path; otherwise config group name
   (must exist). No preset-bareword branch — those are options now.
