@@ -3,8 +3,8 @@
 module ClaudeTmux
   class Group
     # `ccg` bare → multi-select fzf picker over group names + `sesh list`.
-    # Returns a list of {path:, presets:, from_group:} entries, already
-    # expanded (groups flattened into their constituent paths).
+    # Returns { named_groups: [name, ...], ad_hoc_paths: [path, ...] } so the
+    # caller can feed selections back through the normal Resolver pipeline.
     class InteractivePicker
       def initialize(config:)
         @config = config
@@ -12,13 +12,30 @@ module ClaudeTmux
 
       def call
         lines = assemble_lines
-        return [] if lines.empty?
+        return empty_result if lines.empty?
 
         selected = fzf_select(lines)
-        selected.flat_map { |line| expand(line) }
+        classify(selected)
       end
 
       private
+
+      def empty_result
+        { named_groups: [], ad_hoc_paths: [] }
+      end
+
+      def classify(selected)
+        result = empty_result
+        selected.each do |line|
+          kind, label, = line.split("\t", 3)
+          if kind == '[group]'
+            result[:named_groups] << label if @config.group?(label)
+          else
+            result[:ad_hoc_paths] << label
+          end
+        end
+        result
+      end
 
       def assemble_lines
         group_lines = @config.group_names.map do |n|
@@ -51,20 +68,6 @@ module ClaudeTmux
       rescue Errno::ENOENT
         warn 'ccg: fzf not found on PATH — interactive picker requires fzf + sesh.'
         []
-      end
-
-      def expand(line)
-        kind, label, = line.split("\t", 3)
-        if kind == '[group]'
-          group = @config.group(label)
-          return [] unless group
-
-          group.entries.map do |e|
-            { path: File.expand_path(e.path), presets: e.presets, from_group: true }
-          end
-        else
-          [{ path: File.expand_path(label), presets: [], from_group: false }]
-        end
       end
     end
   end

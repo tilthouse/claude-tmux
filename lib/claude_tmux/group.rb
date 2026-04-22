@@ -29,7 +29,7 @@ module ClaudeTmux
     end
 
     def run
-      return print_help if %w[-h --help].include?(@argv.first)
+      return print_help if %w[-h --help help].include?(@argv.first)
 
       return run_management(@argv.shift) if @argv.first && RESERVED_SUBCOMMANDS.include?(@argv.first)
 
@@ -158,9 +158,7 @@ module ClaudeTmux
       defaults = @options_loader.load(dir: Dir.pwd, logger: @stderr)
       merged = merge_defaults(cli_opts, defaults)
 
-      entries = Resolver.new(cli_opts, merged, config: config, prog: @prog).resolve
-      entries = pick_interactively if entries.empty?
-
+      entries = resolve_entries(cli_opts, merged)
       if entries.empty?
         @stderr.puts "#{@prog}: no projects resolved — nothing to launch."
         raise UsageError.new('no projects', exit_status: 1)
@@ -174,6 +172,16 @@ module ClaudeTmux
       build_dashboard(dashboard, entries)
       focus(dashboard)
       0
+    end
+
+    def resolve_entries(cli_opts, merged)
+      entries = Resolver.new(cli_opts, merged, config: config, prog: @prog).resolve
+      return entries unless entries.empty?
+
+      picked = InteractivePicker.new(config: config).call
+      cli_opts[:named_groups].concat(picked[:named_groups])
+      cli_opts[:ad_hoc_paths].concat(picked[:ad_hoc_paths])
+      Resolver.new(cli_opts, merged, config: config, prog: @prog).resolve
     end
 
     def merge_defaults(cli, defaults)
@@ -240,10 +248,6 @@ module ClaudeTmux
       else
         @tmux.attach(dashboard)
       end
-    end
-
-    def pick_interactively
-      InteractivePicker.new(config: config).call
     end
   end
 end

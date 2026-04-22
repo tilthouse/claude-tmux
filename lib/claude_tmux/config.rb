@@ -29,7 +29,7 @@ module ClaudeTmux
     DEFAULT_PATH = File.expand_path('~/.config/cct/groups.conf')
 
     GROUP_NAME_RE = /\A[A-Za-z0-9_-]+\z/
-    RESERVED_WORDS = %w[add rm list edit group].freeze
+    RESERVED_WORDS = %w[add rm list edit group help].freeze
 
     Group = Struct.new(:name, :entries, keyword_init: true)
     Entry = Struct.new(:path, :presets, keyword_init: true) do
