@@ -77,6 +77,43 @@ RSpec.describe ClaudeTmux::Config do
     end
   end
 
+  describe '#rename_group' do
+    it 'renames in place, preserving entries and order index' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('a', '~/x')
+      cfg.add_entry('b', '~/y')
+      cfg.add_entry('c', '~/z')
+      cfg.rename_group('b', 'beta')
+      expect(cfg.group_names).to eq(%w[a beta c])
+      expect(cfg.group('beta').entries.first.path).to eq('~/y')
+      expect(cfg.group('b')).to be_nil
+    end
+
+    it 'raises when the source group does not exist' do
+      cfg = described_class.new(path: @path)
+      expect { cfg.rename_group('nope', 'new') }.to raise_error(ClaudeTmux::ConfigError, /no such group/)
+    end
+
+    it 'raises when the new name is reserved' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('a', '~/x')
+      expect { cfg.rename_group('a', 'add') }.to raise_error(ClaudeTmux::ConfigError, /reserved/)
+    end
+
+    it 'raises when the new name collides with an existing group' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('a', '~/x')
+      cfg.add_entry('b', '~/y')
+      expect { cfg.rename_group('a', 'b') }.to raise_error(ClaudeTmux::ConfigError, /already exists/)
+    end
+
+    it 'raises on invalid name format' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('a', '~/x')
+      expect { cfg.rename_group('a', 'bad name') }.to raise_error(ClaudeTmux::ConfigError, /invalid group name/)
+    end
+  end
+
   describe '#remove_entry / #delete_group' do
     it 'removes a single entry and leaves the group' do
       cfg = described_class.new(path: @path)

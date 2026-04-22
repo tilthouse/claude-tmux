@@ -127,6 +127,19 @@ module ClaudeTmux
       true
     end
 
+    def rename_group(old_name, new_name)
+      raise ConfigError, "no such group: #{old_name}" unless @groups.key?(old_name)
+      raise ConfigError, "group already exists: #{new_name}" if @groups.key?(new_name)
+
+      validate_group_name!(new_name)
+
+      group = @groups.delete(old_name)
+      group.name = new_name
+      @groups[new_name] = group
+      @order[@order.index(old_name)] = new_name
+      true
+    end
+
     def save
       FileUtils.mkdir_p(File.dirname(@path))
       File.open(@path, 'w') do |f|
