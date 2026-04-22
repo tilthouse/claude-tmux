@@ -19,13 +19,22 @@ module ClaudeTmux
           screen, payload = stack.last
           result = dispatch_screen(screen, payload)
           case result.first
-          when :next then stack.push([result[1], result[2]])
-          when :back then stack.pop
-          when :exit then stack.clear
+          when :next      then stack.push([result[1], result[2]])
+          when :back      then (result[1] || 1).times { stack.pop }
+          when :back_swap then back_swap(stack, result[1], result[2])
+          when :exit      then stack.clear
           end
         end
         save_prompt
         0
+      end
+
+      # Pop self + the frame below, then push new (used by rename/delete to
+      # discard the now-stale parent group_view).
+      def back_swap(stack, name, payload)
+        stack.pop
+        stack.pop
+        stack.push([name, payload])
       end
 
       private
@@ -78,6 +87,23 @@ module ClaudeTmux
             [:next, :action_menu, { group: name, path: path }]
           end
         end
+      end
+
+      def screen_rename_group(payload)
+        old_name = payload[:group]
+        new_name = @prompt.input(label: "Rename [#{old_name}] to:")
+        return [:back] if new_name.nil? || new_name.strip.empty?
+
+        @config.rename_group(old_name, new_name.strip)
+        [:back_swap, :group_view, { group: new_name.strip }]
+      end
+
+      def screen_delete_group(payload)
+        name = payload[:group]
+        return [:back] unless @prompt.confirm(label: "Delete group [#{name}]?")
+
+        @config.delete_group(name)
+        [:back, 2]
       end
 
       def screen_action_menu(payload)

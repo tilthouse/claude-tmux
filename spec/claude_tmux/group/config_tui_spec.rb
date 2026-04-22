@@ -84,4 +84,49 @@ RSpec.describe ClaudeTmux::Group::ConfigTui do
     reloaded = ClaudeTmux::Config.load(path: @path)
     expect(reloaded.group('g').entries.map(&:path)).to eq(%w[~/a ~/c ~/b])
   end
+
+  it 'renames a group via R hotkey' do
+    cfg_with('work' => ['~/x']).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose,  value: { key: nil, item: '[work] (1 project)' } },
+                                          { method: :choose,  value: { key: 'R',  item: nil } },
+                                          { method: :input,   value: 'office' },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :confirm, value: true }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    reloaded = ClaudeTmux::Config.load(path: @path)
+    expect(reloaded.group_names).to eq(['office'])
+  end
+
+  it 'deletes a group via D hotkey when confirmed' do
+    cfg_with('work' => ['~/x'], 'life' => ['~/y']).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose,  value: { key: nil, item: '[work] (1 project)' } },
+                                          { method: :choose,  value: { key: 'D',  item: nil } },
+                                          { method: :confirm, value: true },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :confirm, value: true }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    reloaded = ClaudeTmux::Config.load(path: @path)
+    expect(reloaded.group_names).to eq(['life'])
+  end
+
+  it 'cancels delete when not confirmed' do
+    cfg_with('work' => ['~/x']).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose,  value: { key: nil, item: '[work] (1 project)' } },
+                                          { method: :choose,  value: { key: 'D',  item: nil } },
+                                          { method: :confirm, value: false },
+                                          { method: :choose,  value: { key: nil, item: nil } },
+                                          { method: :choose,  value: { key: nil, item: nil } }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    expect(ClaudeTmux::Config.load(path: @path).group_names).to eq(['work'])
+  end
 end
