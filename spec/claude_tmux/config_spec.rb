@@ -114,6 +114,37 @@ RSpec.describe ClaudeTmux::Config do
     end
   end
 
+  describe '#move_entry' do
+    it 'moves an entry to a new index within the group' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/a')
+      cfg.add_entry('g', '~/b')
+      cfg.add_entry('g', '~/c')
+      cfg.move_entry('g', 0, 2)
+      expect(cfg.group('g').entries.map(&:path)).to eq(%w[~/b ~/c ~/a])
+    end
+
+    it 'is a no-op when from == to' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/a')
+      cfg.add_entry('g', '~/b')
+      cfg.move_entry('g', 1, 1)
+      expect(cfg.group('g').entries.map(&:path)).to eq(%w[~/a ~/b])
+    end
+
+    it 'raises when the group is missing' do
+      cfg = described_class.new(path: @path)
+      expect { cfg.move_entry('g', 0, 1) }.to raise_error(ClaudeTmux::ConfigError, /no such group/)
+    end
+
+    it 'raises on out-of-range indices' do
+      cfg = described_class.new(path: @path)
+      cfg.add_entry('g', '~/a')
+      expect { cfg.move_entry('g', 5, 0) }.to raise_error(ClaudeTmux::ConfigError, /index out of range/)
+      expect { cfg.move_entry('g', 0, 5) }.to raise_error(ClaudeTmux::ConfigError, /index out of range/)
+    end
+  end
+
   describe '#remove_entry / #delete_group' do
     it 'removes a single entry and leaves the group' do
       cfg = described_class.new(path: @path)

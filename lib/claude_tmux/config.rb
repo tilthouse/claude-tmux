@@ -127,6 +127,21 @@ module ClaudeTmux
       true
     end
 
+    def move_entry(group_name, from_idx, to_idx)
+      group = @groups[group_name]
+      raise ConfigError, "no such group: #{group_name}" unless group
+      return true if from_idx == to_idx
+
+      size = group.entries.size
+      unless (0...size).cover?(from_idx) && (0...size).cover?(to_idx)
+        raise ConfigError, "index out of range (size=#{size}): #{from_idx}, #{to_idx}"
+      end
+
+      entry = group.entries.delete_at(from_idx)
+      group.entries.insert(to_idx, entry)
+      true
+    end
+
     def rename_group(old_name, new_name)
       raise ConfigError, "no such group: #{old_name}" unless @groups.key?(old_name)
       raise ConfigError, "group already exists: #{new_name}" if @groups.key?(new_name)
