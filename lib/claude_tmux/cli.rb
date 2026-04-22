@@ -103,12 +103,15 @@ module ClaudeTmux
             group rm <name> [<path>]     Remove an entry, or delete the group.
             group list [<name>]          List groups, or dump one group's entries.
             group edit                   Open groups.conf in $EDITOR.
+            group config                 Interactive TUI for managing groups.
           sess-pick                      Decorated sesh session picker.
                                          Shortcut: ccs
           pick                           Alias of sess-pick.
 
         GLOBAL
           -h, --help   Show help (subcommand-specific if after a subcommand).
+
+        Subcommands resolve by unique prefix (e.g. `claude-tmux pi` → `pick`).
 
         Run `<subcommand> --help` (e.g. `cct --help`) for details.
       HELP

@@ -15,6 +15,9 @@ module ClaudeTmux
             #{prog} rm   <group> [<path>]           # remove entry or group
             #{prog} list [<group>]                  # list all groups / dump one
             #{prog} edit                            # open groups.conf in $EDITOR
+            #{prog} config                          # interactive TUI for managing groups
+
+            Subcommands resolve by unique prefix (e.g. `#{prog} c` → `config`).
 
           OPTIONS (launch + add)
             -p, --permission MODE   plan | accept | auto
