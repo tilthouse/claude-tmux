@@ -2,6 +2,7 @@
 
 require_relative 'claude_tmux/version'
 require_relative 'claude_tmux/error'
+require_relative 'claude_tmux/prefix_resolver'
 require_relative 'claude_tmux/tmux'
 require_relative 'claude_tmux/session_name'
 require_relative 'claude_tmux/presets'
