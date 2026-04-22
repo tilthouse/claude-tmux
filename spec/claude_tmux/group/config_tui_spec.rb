@@ -154,6 +154,41 @@ RSpec.describe ClaudeTmux::Group::ConfigTui do
     expect(reloaded.group('work').entries.map(&:path)).to eq(['~/typed'])
   end
 
+  it 'edits per-entry presets via three sequential prompts' do
+    cfg_with('g' => ['~/x']).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose, value: { key: nil, item: '[g] (1 project)' } },
+                                          { method: :choose, value: { key: nil, item: '~/x' } },
+                                          { method: :choose, value: { key: nil, item: 'Edit presets' } },
+                                          { method: :choose, value: { key: nil, item: 'plan' } },
+                                          { method: :choose, value: { key: nil, item: 'sonnet' } },
+                                          { method: :choose, value: { key: nil, item: 'off' } },
+                                          { method: :choose, value: { key: nil, item: nil } },
+                                          { method: :choose, value: { key: nil, item: nil } },
+                                          { method: :confirm, value: true }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    reloaded = ClaudeTmux::Config.load(path: @path)
+    expect(reloaded.group('g').entries.first.presets).to eq(%w[plan sonnet])
+  end
+
+  it 'aborts preset edit on ESC at any step (snapshot untouched)' do
+    cfg_with('g' => ['~/x']).save
+    prompt = ClaudeTmux::FakePrompt.new(responses: [
+                                          { method: :choose, value: { key: nil, item: '[g] (1 project)' } },
+                                          { method: :choose, value: { key: nil, item: '~/x' } },
+                                          { method: :choose, value: { key: nil, item: 'Edit presets' } },
+                                          { method: :choose, value: { key: nil, item: 'plan' } },
+                                          { method: :choose, value: { key: nil, item: nil } },
+                                          { method: :choose, value: { key: nil, item: nil } },
+                                          { method: :choose, value: { key: nil, item: nil } }
+                                        ])
+    tui = described_class.new(config_path: @path, prompt: prompt)
+    tui.run
+    expect(ClaudeTmux::Config.load(path: @path).group('g').entries.first.presets).to eq([])
+  end
+
   it 'cancels delete when not confirmed' do
     cfg_with('work' => ['~/x']).save
     prompt = ClaudeTmux::FakePrompt.new(responses: [

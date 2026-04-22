@@ -19,10 +19,11 @@ module ClaudeTmux
           screen, payload = stack.last
           result = dispatch_screen(screen, payload)
           case result.first
-          when :next      then stack.push([result[1], result[2]])
-          when :back      then (result[1] || 1).times { stack.pop }
-          when :back_swap then back_swap(stack, result[1], result[2])
-          when :exit      then stack.clear
+          when :next           then stack.push([result[1], result[2]])
+          when :back           then (result[1] || 1).times { stack.pop }
+          when :back_swap      then back_swap(stack, result[1], result[2])
+          when :back_then_next then back_then_next(stack, result[1], result[2])
+          when :exit           then stack.clear
           end
         end
         save_prompt
@@ -33,6 +34,13 @@ module ClaudeTmux
       # discard the now-stale parent group_view).
       def back_swap(stack, name, payload)
         stack.pop
+        stack.pop
+        stack.push([name, payload])
+      end
+
+      # Pop self, then push new (used by transient menus like action_menu that
+      # shouldn't re-dispatch after their selected sub-screen finishes).
+      def back_then_next(stack, name, payload)
         stack.pop
         stack.push([name, payload])
       end
@@ -131,6 +139,32 @@ module ClaudeTmux
         [:back, 2]
       end
 
+      def screen_edit_presets(payload)
+        group = payload[:group]
+        path = payload[:path]
+        new_presets = []
+
+        permission = @prompt.choose(%w[(none) plan accept auto], header: "[#{group}] permission")[:item]
+        return [:back] if permission.nil?
+
+        new_presets << permission unless permission == '(none)'
+
+        model = @prompt.choose(%w[(none) opus sonnet], header: "[#{group}] model")[:item]
+        return [:back] if model.nil?
+
+        new_presets << model unless model == '(none)'
+
+        yolo = @prompt.choose(%w[off on], header: "[#{group}] yolo")[:item]
+        return [:back] if yolo.nil?
+
+        new_presets << 'yolo' if yolo == 'on'
+        # Yolo + a permission preset is mutex per Config validation; UI policy: yolo wins.
+        new_presets -= Presets::VALID_PERMISSIONS if new_presets.include?('yolo')
+
+        @config.replace_entry_presets(group, path, new_presets)
+        [:back]
+      end
+
       def screen_action_menu(payload)
         group = payload[:group]
         path = payload[:path]
@@ -142,7 +176,7 @@ module ClaudeTmux
         when 'Remove'       then @config.remove_entry(group, path)
         when 'Move up'      then move_entry_relative(group, path, -1)
         when 'Move down'    then move_entry_relative(group, path, +1)
-        when 'Edit presets' then return [:next, :edit_presets, { group: group, path: path }]
+        when 'Edit presets' then return [:back_then_next, :edit_presets, { group: group, path: path }]
         end
         [:back]
       end
