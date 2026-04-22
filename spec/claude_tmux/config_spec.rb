@@ -75,6 +75,11 @@ RSpec.describe ClaudeTmux::Config do
       cfg = described_class.new(path: @path)
       expect { cfg.add_entry('add', '~/x') }.to raise_error(ClaudeTmux::ConfigError, /reserved/)
     end
+
+    it 'rejects `config` as a reserved group name' do
+      cfg = described_class.new(path: @path)
+      expect { cfg.add_entry('config', '~/x') }.to raise_error(ClaudeTmux::ConfigError, /reserved/)
+    end
   end
 
   describe '#rename_group' do
