@@ -80,6 +80,31 @@ module ClaudeTmux
         end
       end
 
+      def screen_action_menu(payload)
+        group = payload[:group]
+        path = payload[:path]
+        items = ['Remove', 'Move up', 'Move down', 'Edit presets']
+        result = @prompt.choose(items, header: "[#{group}] #{path}")
+        return [:back] if result[:item].nil?
+
+        case result[:item]
+        when 'Remove'       then @config.remove_entry(group, path)
+        when 'Move up'      then move_entry_relative(group, path, -1)
+        when 'Move down'    then move_entry_relative(group, path, +1)
+        when 'Edit presets' then return [:next, :edit_presets, { group: group, path: path }]
+        end
+        [:back]
+      end
+
+      def move_entry_relative(group, path, delta)
+        entries = @config.group(group).entries
+        from = entries.find_index { |e| File.expand_path(e.path) == File.expand_path(path) }
+        return unless from
+
+        to = (from + delta).clamp(0, entries.size - 1)
+        @config.move_entry(group, from, to) unless to == from
+      end
+
       def header_with_dirty
         marker = @config.dirty? ? ' *' : ''
         "ccg config — groups#{marker}"
