@@ -63,7 +63,9 @@ module ClaudeTmux
       end
 
       sub = @argv.first
-      unless (target = SUBCOMMANDS[sub])
+      resolved = PrefixResolver.resolve(sub, SUBCOMMANDS.keys)
+      target = SUBCOMMANDS[resolved] if resolved
+      unless target
         @stderr.puts "#{@prog}: unknown subcommand '#{sub}'"
         @stderr.puts top_level_help
         return 2
