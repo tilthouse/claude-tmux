@@ -31,6 +31,49 @@ session (guard fires), `ccg config` (TUI; ESC out is enough). Also
 exercise prefix matching: `ccg c` (resolves to `config`), `ccg l`
 (resolves to `list`).
 
+### Testing without hijacking the current tmux session
+
+`cct` and `ccg` end with `switch-client`/`attach`, which `exec`s and
+takes over the calling pty. Running them straight from a Claude Code
+session inside tmux replaces the Claude process and kills the session
+on exit. Two patterns avoid that:
+
+1. **In-process drive, skip focus.** For `ccg` dashboard work and
+   anything that doesn't need real fzf:
+
+   ```ruby
+   # bundle exec ruby -Ilib -rclaude_tmux -e '...'
+   config = ClaudeTmux::Config.load
+   g = ClaudeTmux::Group.new("ccg", ["projects"], config: config)
+   cli_opts = ClaudeTmux::Group::Parser.new("ccg", ["projects"], config: config).parse
+   defaults = ClaudeTmux::Options.load(dir: Dir.pwd)
+   merged = g.send(:merge_defaults, cli_opts, defaults)
+   entries = g.send(:resolve_entries, cli_opts, merged)
+   g.send(:ensure_sources, entries, merged, Time.now.strftime("%y-%m-%d-%H%M"))
+   g.send(:build_dashboard, "ccg-projects", entries)
+   # then inspect with read-only tmux commands; skip g.send(:focus, ...)
+   ```
+
+   Inspect with `tmux list-windows -t ccg-projects -F "#{...}"`,
+   `tmux display-message -t ... -p "#{E:window-status-format}"`, etc.
+   Clean up with `tmux kill-session -t ccg-projects`.
+
+2. **Detached tmux + send-keys/capture-pane.** For real fzf flows
+   like `ccg config`:
+
+   ```bash
+   TMUX= tmux new-session -d -s ccg-test -x 120 -y 40 \
+     'bundle exec ruby -Ilib bin/ccg config; sleep 60'
+   tmux send-keys -t ccg-test Enter           # drive the TUI
+   tmux capture-pane -t ccg-test -p           # read what's on screen
+   tmux kill-session -t ccg-test
+   ```
+
+   `TMUX=` clears the env var so the spawned process sees itself as
+   "outside tmux" and uses `attach` instead of `switch-client`. The
+   detached session has no client to hijack, so the launcher just
+   creates the dashboard and waits for an attach that never comes.
+
 Installed paths under `~/.local/bin/` are symlinks into this repo, so
 edits under `bin/` and `lib/` take effect on the next invocation. Don't
 edit the installed symlinks; edit the files here.
