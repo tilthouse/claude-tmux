@@ -11,8 +11,10 @@ module ClaudeTmux
   # via `cct` in their repo. Killing the grouping session does not kill
   # sources; killing a source's claude closes both windows naturally.
   class Group
-    DASHBOARD_PREFIX     = 'ccg-'
-    RESERVED_SUBCOMMANDS = %w[add rm list edit config].freeze
+    DASHBOARD_PREFIX       = 'ccg-'
+    RESERVED_SUBCOMMANDS   = %w[add rm list edit config].freeze
+    SLUG_TOKEN             = '#{?@ccg-project,#{@ccg-project}: ,}'
+    FALLBACK_STATUS_FORMAT = '#I #{?@ccg-project,#{@ccg-project} ,}#W'
 
     attr_reader :prog, :argv
 
@@ -233,11 +235,14 @@ module ClaudeTmux
         @tmux.set_option(dashboard, 'renumber-windows', 'on')
       end
 
-      existing_names = @tmux.list_windows(dashboard).map { |idx_name| idx_name[1] }
+      status_format = slug_aware_status_format(@tmux.show_option_global('window-status-format'))
+      current_format = slug_aware_status_format(@tmux.show_option_global('window-status-current-format'))
+
+      existing_slugs = @tmux.list_windows_fmt(dashboard, %w[window_index @ccg-project]).map { |_, slug| slug }
 
       entries.each do |entry|
         project_name = entry[:session].sub(/\Acc-/, '')
-        next if existing_names.include?(project_name)
+        next if existing_slugs.include?(project_name)
 
         # Source's first window may not be at index 0 — tmux base-index can be 1.
         src_idx, = @tmux.list_windows(entry[:session]).first
@@ -245,12 +250,34 @@ module ClaudeTmux
 
         @tmux.link_window("#{entry[:session]}:#{src_idx}", dashboard)
         last_idx, = @tmux.list_windows(dashboard).last
-        @tmux.rename_window("#{dashboard}:#{last_idx}", project_name)
+        target = "#{dashboard}:#{last_idx}"
+        @tmux.set_window_option(target, '@ccg-project', project_name)
+        @tmux.set_window_option(target, 'window-status-format', status_format)
+        @tmux.set_window_option(target, 'window-status-current-format', current_format)
       end
 
+      # Drop any window not tagged with a current project slug — that includes
+      # the placeholder shell from initial session creation and any stale
+      # entries from a prior `ccg <group>` invocation with different members.
       project_names = entries.map { |e| e[:session].sub(/\Acc-/, '') }
-      @tmux.list_windows(dashboard).each do |idx, name|
-        @tmux.kill_window("#{dashboard}:#{idx}") unless project_names.include?(name)
+      @tmux.list_windows_fmt(dashboard, %w[window_index @ccg-project]).each do |idx, slug|
+        @tmux.kill_window("#{dashboard}:#{idx}") unless project_names.include?(slug)
+      end
+    end
+
+    # Splice the project-slug token into the user's existing window-status
+    # format so the dashboard preserves their theme styling. Falls back to a
+    # plain `#I <slug> #W` when the global format is unset or has no obvious
+    # title token to splice in front of.
+    def slug_aware_status_format(global_format)
+      return FALLBACK_STATUS_FORMAT if global_format.nil? || global_format.empty?
+
+      if global_format.include?('#T')
+        global_format.sub('#T', "#{SLUG_TOKEN}#T")
+      elsif global_format.include?('#W')
+        global_format.sub('#W', "#{SLUG_TOKEN}#W")
+      else
+        "#{SLUG_TOKEN}#{global_format}"
       end
     end
 

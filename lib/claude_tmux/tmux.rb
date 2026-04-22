@@ -58,6 +58,25 @@ module ClaudeTmux
              out: File::NULL, err: File::NULL)
     end
 
+    def set_window_option(window_target, option, value)
+      system('tmux', 'set-window-option', '-t', window_target, option, value,
+             out: File::NULL, err: File::NULL)
+    end
+
+    # Returns the global value of a tmux option, or nil if unset.
+    def show_option_global(option)
+      out = IO.popen(['tmux', 'show-options', '-gv', option, err: File::NULL], &:read) || ''
+      out.empty? ? nil : out.chomp
+    end
+
+    # list-windows with arbitrary tmux format fields. Returns an Array of Arrays;
+    # the inner array has one element per requested field, in order.
+    def list_windows_fmt(session, fields)
+      fmt = fields.map { |f| "\#{#{f}}" }.join("\t")
+      out = IO.popen(['tmux', 'list-windows', '-t', session, '-F', fmt, err: File::NULL], &:read) || ''
+      out.each_line.map { |line| line.chomp.split("\t", fields.size) }
+    end
+
     def capture_pane(target, lines: 30)
       IO.popen(['tmux', 'capture-pane', '-pt', target, '-S', "-#{lines}", err: File::NULL], &:read) || ''
     rescue Errno::ENOENT, Errno::EPIPE

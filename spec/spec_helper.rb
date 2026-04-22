@@ -25,11 +25,19 @@ end
 class FakeTmux
   attr_reader :calls, :sessions, :windows
 
+  attr_accessor :global_options
+
   def initialize(inside: false, existing: [])
     @calls = []
     @sessions = existing.dup
     @windows = Hash.new { |h, k| h[k] = [] }
+    @window_options = {}
+    @global_options = {}
     @inside = inside
+  end
+
+  def show_option_global(option)
+    @global_options[option]
   end
 
   def has_session?(name)
@@ -98,6 +106,25 @@ class FakeTmux
 
   def list_windows(session)
     @windows[session].map { |idx, name| [idx.to_s, name] }
+  end
+
+  def list_windows_fmt(session, fields)
+    @windows[session].map do |idx, name|
+      fields.map do |f|
+        case f
+        when 'window_index' then idx.to_s
+        when 'window_name'  then name
+        else                     (@window_options[[session, idx]] || {})[f].to_s
+        end
+      end
+    end
+  end
+
+  def set_window_option(window_target, option, value)
+    @calls << [:set_window_option, window_target, option, value]
+    session, idx = window_target.split(':', 2)
+    (@window_options[[session, idx.to_i]] ||= {})[option] = value
+    true
   end
 
   def capture_pane(*)
