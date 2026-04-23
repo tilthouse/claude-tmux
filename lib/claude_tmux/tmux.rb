@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'bundler'
+
 module ClaudeTmux
   # Thin wrapper around the tmux CLI. All methods that take a session/window
   # name pass tmux argv as discrete tokens (no shell interpolation), so these
@@ -8,6 +10,21 @@ module ClaudeTmux
   # Methods that replace the current process (attach / new-session /
   # switch-client) call Kernel#exec, which under multiple-argument form
   # performs a direct execve(2) with no shell involvement.
+  #
+  # When cct is launched via its in-repo bin stub, bundler sets
+  # BUNDLE_GEMFILE / RUBYOPT / GEM_HOME / etc. in our process. Without
+  # scrubbing, tmux — and the child `claude` it spawns — inherits this gem's
+  # bundle context, so any ruby/bundle/rspec run inside the Claude Code
+  # session resolves against our Gemfile instead of the project's.
+  #
+  # Two mechanisms cover the two cases this can happen in:
+  #
+  #   * `Bundler.with_unbundled_env` around new-session — if our invocation
+  #     is what starts the tmux server, the server inherits the scrubbed env.
+  #   * `tmux set-environment -gu` per injected var — if a server is already
+  #     running (started earlier under bundler, before this fix), its global
+  #     env is already contaminated; the client has to remove each var
+  #     explicitly. Silently no-ops if no server exists.
   class Tmux
     def has_session?(name)
       system('tmux', 'has-session', '-t', name, out: File::NULL, err: File::NULL)
@@ -18,7 +35,10 @@ module ClaudeTmux
     end
 
     def new_session_detached(name, cwd, command)
-      system('tmux', 'new-session', '-d', '-s', name, '-c', cwd, *command)
+      scrub_bundler_from_server
+      Bundler.with_unbundled_env do
+        system('tmux', 'new-session', '-d', '-s', name, '-c', cwd, *command)
+      end
     end
 
     def attach(name)
@@ -26,7 +46,10 @@ module ClaudeTmux
     end
 
     def new_session(name, cwd, command)
-      Kernel.send(:exec, 'tmux', 'new-session', '-s', name, '-c', cwd, *command)
+      scrub_bundler_from_server
+      Bundler.with_unbundled_env do
+        Kernel.send(:exec, 'tmux', 'new-session', '-s', name, '-c', cwd, *command)
+      end
     end
 
     def switch_client(name)
@@ -87,6 +110,23 @@ module ClaudeTmux
       fmt = '#{window_index} #{window_name}' # rubocop:disable Lint/InterpolationCheck
       out = IO.popen(['tmux', 'list-windows', '-t', session, '-F', fmt, err: File::NULL], &:read) || ''
       out.each_line.map { |line| line.chomp.split(' ', 2) }
+    end
+
+    private
+
+    def scrub_bundler_from_server
+      return if bundler_injected_keys.empty?
+
+      argv = ['tmux']
+      bundler_injected_keys.each_with_index do |var, i|
+        argv << ';' unless i.zero?
+        argv.push('set-environment', '-gu', var)
+      end
+      system(*argv, out: File::NULL, err: File::NULL)
+    end
+
+    def bundler_injected_keys
+      @bundler_injected_keys ||= (ENV.to_h.keys - Bundler.unbundled_env.keys).freeze
     end
   end
 end
