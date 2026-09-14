@@ -15,6 +15,7 @@ references — keep both in sync when behavior changes.
 ## Commands
 
 ```bash
+bundle config set --local path vendor/bundle  # fresh clone, before the first install (see below)
 bundle install                       # one-time setup
 bundle exec rspec                    # run tests
 bundle exec rspec path/to/spec.rb    # single spec file
@@ -23,6 +24,13 @@ bundle exec rubocop --autocorrect    # apply autocorrections
 bundle exec rake build               # pkg/claude-tmux-<version>.gem
 ./install.sh                         # refresh ~/.local/bin symlinks (idempotent)
 ```
+
+On a fresh clone, set the local bundle path before the first
+`bundle install`. Without it, Bundler installs into the active Ruby's
+gem directory and RubyGems writes `cct`/`ccg`/`ccs`/`claude-tmux`
+binstubs there. Under a version manager those binstubs sit behind
+shims that come before `~/.local/bin` on `$PATH`, so they shadow the
+checkout's symlinks and the commands fail or run the wrong copy.
 
 Manual smoke-test shape: `cct --help`, `ccg --help`, `claude-tmux`,
 `claude-tmux project`, `claude-tmux group list`,
